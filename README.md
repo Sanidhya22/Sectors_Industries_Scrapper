@@ -73,6 +73,20 @@ The script will:
     ]
   }
 ]
+
+{
+  "sector_title": "Technology",
+  "subindustries": [{
+    "name": "Software",
+    "href": "/stock?industry=123",
+    "stocks": [
+      {
+        "name": "TCS",
+        "code": "NSE:TCS"
+      }
+    ]
+  }]
+}
 ```
 
 ### Excel Format

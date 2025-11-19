@@ -46,7 +46,7 @@ logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
-        logging.FileHandler('scraper_complete.log'),
+        logging.FileHandler('scraper_complete.log', encoding='utf-8'),
         logging.StreamHandler()
     ]
 )
@@ -310,9 +310,9 @@ def scrape_stocks_with_codes(subpage, subsector_url, sub_name):
                 })
                 
                 if stock_code:
-                    logger.info(f"         → Code: {stock_code}")
+                    logger.info(f"         -> Code: {stock_code}")
                 else:
-                    logger.warning(f"         → Could not extract code")
+                    logger.warning(f"         -> Could not extract code")
                 
                 # Go back to stock list
                 logger.debug(f"         Going back to list...")
@@ -451,7 +451,7 @@ def run():
                         if stock.get("code")
                     )
                     logger.info(
-                        f"\n✓ Completed {sector_name}: "
+                        f"\n[OK] Completed {sector_name}: "
                         f"{total_stocks} stocks, "
                         f"{successful_codes} codes extracted"
                     )
@@ -474,7 +474,7 @@ def run():
         logger.info(f"\nSaving complete data to {OUTPUT_JSON}")
         with open(OUTPUT_JSON, "w", encoding="utf-8") as f:
             json.dump(results, f, indent=2, ensure_ascii=False)
-        logger.info(f"✓ Saved JSON output")
+        logger.info(f"[OK] Saved JSON output")
 
         # Create Excel output with stock codes
         rows = []
@@ -494,7 +494,7 @@ def run():
 
         df = pd.DataFrame(rows)
         df.to_excel(OUTPUT_XLSX, index=False)
-        logger.info(f"✓ Saved Excel output to {OUTPUT_XLSX}")
+        logger.info(f"[OK] Saved Excel output to {OUTPUT_XLSX}")
         
         # Final statistics
         total_stocks = len(rows)

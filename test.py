@@ -350,9 +350,13 @@ def scrape_stocks_with_codes(subpage, subsector_url, sub_name):
                     try:
                         screenshot_path = f"debug_no_code_{stock_name.replace(' ', '_').replace('.', '')[:30]}.png"
                         subpage.screenshot(path=screenshot_path)
-                        logger.debug(f"            Screenshot saved: {screenshot_path}")
+                        logger.warning(f"            Screenshot saved: {screenshot_path}")
                     except:
                         pass
+                    
+                    # Stop execution for debugging
+                    logger.error("STOPPING: Code extraction failed. Check debug info above.")
+                    raise Exception(f"Code extraction failed for {stock_name}. Check logs and screenshot for details.")
                 
                 # Go back to stock list
                 logger.debug(f"         Going back to list...")

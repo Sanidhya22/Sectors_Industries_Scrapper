@@ -56,24 +56,6 @@ The script will:
 
 ### JSON Structure
 ```json
-[
-  {
-    "sector_title": "Sector Name",
-    "subindustries": [
-      {
-        "name": "Subsector Name",
-        "href": "/sector/subsector-url",
-        "stocks": [
-          {
-            "name": "Stock Name",
-            "href": "/company/stock-url"
-          }
-        ]
-      }
-    ]
-  }
-]
-
 {
   "sector_title": "Technology",
   "subindustries": [{

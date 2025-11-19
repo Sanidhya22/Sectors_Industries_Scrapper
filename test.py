@@ -43,7 +43,7 @@ USER_AGENT = (
 
 # Configure logging
 logging.basicConfig(
-    level=logging.INFO,
+    level=logging.DEBUG,  # Changed to DEBUG for more detailed logs
     format='%(asctime)s - %(levelname)s - %(message)s',
     handlers=[
         logging.FileHandler('scraper_complete.log', encoding='utf-8'),
@@ -51,6 +51,14 @@ logging.basicConfig(
     ]
 )
 logger = logging.getLogger(__name__)
+
+# Set console handler to INFO, file handler keeps DEBUG
+console_handler = None
+for handler in logging.getLogger().handlers:
+    if isinstance(handler, logging.StreamHandler) and not isinstance(handler, logging.FileHandler):
+        console_handler = handler
+        console_handler.setLevel(logging.INFO)  # Console shows INFO and above
+        break
 
 # ============================================================================
 # JavaScript Code Snippets for Browser Evaluation
@@ -252,13 +260,36 @@ def JS_SET_ZOOM(zoom_level):
     return f"() => {{ document.documentElement.style.zoom = '{zoom_level}'; }}"
 
 
-def extract_stock_code_from_page(page):
+def extract_stock_code_from_page(page, stock_name="Unknown"):
     """Extract stock exchange code from current stock detail page."""
     try:
         code_str = page.evaluate(JS_EXTRACT_CODE)
+        
+        # Debug logging when code extraction fails
+        if not code_str:
+            logger.debug(f"Debug info for {stock_name}:")
+            logger.debug(f"  Current URL: {page.url}")
+            
+            # Check if page loaded correctly
+            try:
+                ion_texts = page.evaluate(
+                    """() => {
+                        const texts = Array.from(document.querySelectorAll('ion-text'));
+                        return texts.slice(0, 10).map(el => ({
+                            text: el.textContent.trim(),
+                            visible: window.getComputedStyle(el).display !== 'none'
+                        }));
+                    }"""
+                )
+                logger.debug(f"  Found {len(ion_texts)} ion-text elements (showing first 10):")
+                for i, item in enumerate(ion_texts, 1):
+                    logger.debug(f"    {i}. '{item['text']}' (visible: {item['visible']})")
+            except Exception as debug_e:
+                logger.debug(f"  Could not extract debug info: {debug_e}")
+        
         return code_str
     except Exception as e:
-        logger.error(f"Error extracting stock code: {e}")
+        logger.error(f"Error extracting stock code for {stock_name}: {e}")
         return None
 
 
@@ -302,7 +333,7 @@ def scrape_stocks_with_codes(subpage, subsector_url, sub_name):
                 subpage.wait_for_timeout(2500)
                 
                 # Extract stock code
-                stock_code = extract_stock_code_from_page(subpage)
+                stock_code = extract_stock_code_from_page(subpage, stock_name)
                 
                 stocks_with_codes.append({
                     "name": stock_name,
@@ -312,7 +343,16 @@ def scrape_stocks_with_codes(subpage, subsector_url, sub_name):
                 if stock_code:
                     logger.info(f"         -> Code: {stock_code}")
                 else:
-                    logger.warning(f"         -> Could not extract code")
+                    logger.warning(f"         -> Could not extract code for {stock_name}")
+                    logger.warning(f"            URL: {subpage.url}")
+                    
+                    # Take a screenshot for manual inspection (optional)
+                    try:
+                        screenshot_path = f"debug_no_code_{stock_name.replace(' ', '_').replace('.', '')[:30]}.png"
+                        subpage.screenshot(path=screenshot_path)
+                        logger.debug(f"            Screenshot saved: {screenshot_path}")
+                    except:
+                        pass
                 
                 # Go back to stock list
                 logger.debug(f"         Going back to list...")

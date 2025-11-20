@@ -60,3 +60,4 @@ output_*.xlsx
 
 # Browser data (Playwright)
 .playwright/
+

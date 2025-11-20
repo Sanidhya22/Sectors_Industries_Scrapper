@@ -15,42 +15,47 @@ import collections
 import traceback
 
 # --- Files (assumes same folder) ---
-# sector -> subindustries -> stocks. :contentReference[oaicite:12]{index=12}
-SECTORS_FILE = "output_sectors_stocks.json"
-# name -> "NSE:SYM" or "BSE:SYM". :contentReference[oaicite:13]{index=13}
-STOCK_CODES_FILE = "output_stock_codes.json"
-# NSE instrument metadata. :contentReference[oaicite:14]{index=14}
-NSE_MIS_FILE = "NSE_MIS.json"
-# BSE instrument metadata (if present).
-BSE_MIS_FILE = "BSE_MIS.json"
+# Unified file: sector -> subindustries -> stocks (with codes)
+SECTORS_FILE = "output_complete_data.json"
+# Complete formatted instrument metadata (in upstox-instruments folder)
+INSTRUMENTS_FILE = "upstox-instruments/complete.json"
 
 # --- Helpers to load files ---
 
 
 @st.cache_data
-def load_json(path):
-    return json.load(open(path, "r", encoding="utf-8"))
+def load_json(path, encoding="utf-8"):
+    return json.load(open(path, "r", encoding=encoding))
 
 
 sectors_data = load_json(SECTORS_FILE)
-stock_codes = load_json(STOCK_CODES_FILE)
-nse_mis = load_json(NSE_MIS_FILE)
-try:
-    bse_mis = load_json(BSE_MIS_FILE)
-except Exception:
-    bse_mis = []
+# Load the complete formatted instruments file with utf-16 encoding
+instruments_data = load_json(INSTRUMENTS_FILE, encoding="utf-16")
 
-# Build mappings
+# Build name-to-code mapping from unified JSON structure
 name_to_exchange_sym = {}
-for entry in stock_codes:
-    name = entry.get("name")
-    code = entry.get("code")  # e.g. "NSE:BHARTIARTL"
-    if name and code:
-        name_to_exchange_sym[name.strip()] = code.strip()
+for sector in sectors_data:
+    for subindustry in sector.get("subindustries", []):
+        for stock in subindustry.get("stocks", []):
+            name = stock.get("name")
+            code = stock.get("code")  # e.g. "NSE:BHARTIARTL"
+            if name and code:
+                name_to_exchange_sym[name.strip()] = code.strip()
 
-# index NSE/BSE by trading_symbol (upper) for quick lookup
-nse_by_symbol = {(e.get("trading_symbol") or "").upper(): e for e in nse_mis}
-bse_by_symbol = {(e.get("trading_symbol") or "").upper(): e for e in bse_mis}
+# Build lookup dictionaries from complete.json
+# Index NSE instruments by trading_symbol (upper) for quick lookup
+nse_by_symbol = {}
+bse_by_symbol = {}
+
+for instrument in instruments_data:
+    trading_symbol = (instrument.get("trading_symbol") or "").upper()
+    segment = instrument.get("segment", "")
+
+    # Filter for equity segments only
+    if segment == "NSE_EQ" and trading_symbol:
+        nse_by_symbol[trading_symbol] = instrument
+    elif segment == "BSE_EQ" and trading_symbol:
+        bse_by_symbol[trading_symbol] = instrument
 
 # --- Upstox fetch (copied/adapted from chartui.py) ---
 
@@ -111,14 +116,15 @@ def fetch_data_from_yahoo(ticker: str, start_date: str, end_date: str) -> pd.Dat
     if df.empty:
         return pd.DataFrame()
     df.index = pd.to_datetime(df.index)
-    df = df.rename(columns={"Adj Close": "Close"}) if "Adj Close" in df.columns else df
+    df = df.rename(columns={"Adj Close": "Close"}
+                   ) if "Adj Close" in df.columns else df
     # ensure Close column available
     if "Close" not in df.columns:
         return pd.DataFrame()
     return df[["Close"]].sort_index()
 
 
-# Map stock to instrument_key (prefer NSE/BSE MIS)
+# Map stock to instrument_key (from complete.json)
 
 
 def get_instrument_key_for_stock(
@@ -127,9 +133,9 @@ def get_instrument_key_for_stock(
     """
     Returns (instrument_key, source) or (None, reason)
     Strategy:
-      - Look up name -> 'NSE:SYM' from output_stock_codes.json
-      - If found, search corresponding MIS json by trading_symbol to get instrument_key
-      - If not found, attempt some fuzzy match by trading_symbol in MIS (best-effort)
+      - Look up name -> 'NSE:SYM' from output_complete_data.json
+      - If found, search complete.json by trading_symbol to get instrument_key
+      - Filters by segment (NSE_EQ or BSE_EQ) for equity instruments
     """
     name = stock_name.strip()
     code = name_to_exchange_sym.get(name)
@@ -200,14 +206,16 @@ with col1:
     end_default = datetime.now().date()
     start_date = st.date_input("Start date", value=start_default)
     end_date = st.date_input("End date", value=end_default)
-    interval = st.selectbox("Interval (for Upstox)", ["1d", "5m", "15m", "1h"], index=0)
+    interval = st.selectbox("Interval (for Upstox)", [
+                            "1d", "5m", "15m", "1h"], index=0)
     use_upstox = st.checkbox(
         "Use Upstox (requires token configured in file)", value=False
     )
-    show_components = st.checkbox("Show component stock normalized series", value=False)
+    show_components = st.checkbox(
+        "Show component stock normalized series", value=False)
 with col2:
     st.info(
-        "Notes: Upstox option uses instrument_key from NSE/BSE MIS files. If Upstox not available, Yahoo Finance fallback is used where possible."
+        "Notes: Upstox option uses instrument_key from complete.json. If Upstox not available, Yahoo Finance fallback is used where possible."
     )
     st.write(
         "If using Yahoo fallback: NSE tickers use `<SYM>.NS`, BSE tickers use `<SYM>.BO` (best-effort)."
@@ -231,7 +239,8 @@ if st.button("Build sector index"):
                     )
                     # prefer 'Close' column
                     if not df.empty and "Close" in df.columns:
-                        s = df["Close"].resample("1D").last().dropna()  # daily close
+                        s = df["Close"].resample(
+                            "1D").last().dropna()  # daily close
                         dfs[name] = s
                     else:
                         missing[name] = f"upstox_no_data_{info}"
@@ -269,7 +278,8 @@ if st.button("Build sector index"):
             )
             st.subheader("Missing / unmatched stocks")
             st.dataframe(
-                pd.DataFrame.from_dict(missing, orient="index", columns=["reason"])
+                pd.DataFrame.from_dict(
+                    missing, orient="index", columns=["reason"])
                 .reset_index()
                 .rename(columns={"index": "stock"})
             )
@@ -331,7 +341,8 @@ if st.button("Build sector index"):
                     )
                     for k, v in list(clean_dfs.items())[:10]
                 }
-                st.write("Sample included (name -> (n_points, start, end))", sample)
+                st.write(
+                    "Sample included (name -> (n_points, start, end))", sample)
             if bad_entries:
                 st.subheader("Excluded stocks (reasons)")
                 st.dataframe(
@@ -357,7 +368,8 @@ if st.button("Build sector index"):
                 returns = price_df.pct_change().fillna(0)
                 avg_return = returns.mean(axis=1)
                 sector_index = (1 + avg_return).cumprod() * 100.0
-                sector_index = sector_index.rename("Sector Index (equal-weight)")
+                sector_index = sector_index.rename(
+                    "Sector Index (equal-weight)")
 
                 # rest of plotting code unchanged...
                 fig = go.Figure()

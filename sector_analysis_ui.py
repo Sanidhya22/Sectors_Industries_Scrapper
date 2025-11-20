@@ -25,7 +25,13 @@ INSTRUMENTS_FILE = "upstox-instruments/complete.json"
 
 @st.cache_data
 def load_json(path, encoding="utf-8"):
-    return json.load(open(path, "r", encoding=encoding))
+    try:
+        return json.load(open(path, "r", encoding=encoding))
+    except UnicodeDecodeError:
+        # If initial encoding fails, try utf-8
+        if encoding != "utf-8":
+            return json.load(open(path, "r", encoding="utf-8"))
+        raise
 
 
 sectors_data = load_json(SECTORS_FILE)
@@ -43,19 +49,16 @@ for sector in sectors_data:
                 name_to_exchange_sym[name.strip()] = code.strip()
 
 # Build lookup dictionaries from complete.json
-# Index NSE instruments by trading_symbol (upper) for quick lookup
-nse_by_symbol = {}
-bse_by_symbol = {}
+# Index instruments by trading_symbol (case-insensitive) for quick lookup
+trading_symbol_to_instrument = {}
 
 for instrument in instruments_data:
-    trading_symbol = (instrument.get("trading_symbol") or "").upper()
+    trading_symbol = (instrument.get("trading_symbol") or "").strip().upper()
     segment = instrument.get("segment", "")
 
-    # Filter for equity segments only
-    if segment == "NSE_EQ" and trading_symbol:
-        nse_by_symbol[trading_symbol] = instrument
-    elif segment == "BSE_EQ" and trading_symbol:
-        bse_by_symbol[trading_symbol] = instrument
+    # Filter for equity segments only (BSE_EQ and NSE_EQ)
+    if trading_symbol and segment in ("NSE_EQ", "BSE_EQ"):
+        trading_symbol_to_instrument[trading_symbol] = instrument
 
 # --- Upstox fetch (copied/adapted from chartui.py) ---
 
@@ -133,9 +136,8 @@ def get_instrument_key_for_stock(
     """
     Returns (instrument_key, source) or (None, reason)
     Strategy:
-      - Look up name -> 'NSE:SYM' from output_complete_data.json
-      - If found, search complete.json by trading_symbol to get instrument_key
-      - Filters by segment (NSE_EQ or BSE_EQ) for equity instruments
+      - Look up name -> 'NSE:SYM' or 'BSE:SYM' from output_complete_data.json
+      - Look up trading_symbol directly in trading_symbol_to_instrument
     """
     name = stock_name.strip()
     code = name_to_exchange_sym.get(name)
@@ -146,22 +148,15 @@ def get_instrument_key_for_stock(
         exch, sym = code.split(":", 1)
     except Exception:
         return None, "bad_code_format"
-    symU = sym.strip().upper()
-    exch = exch.strip().upper()
-    if exch == "NSE":
-        e = nse_by_symbol.get(symU)
-        if e:
-            return e.get("instrument_key"), "NSE_MIS"
-        else:
-            return None, "nse_symbol_not_found"
-    elif exch == "BSE":
-        e = bse_by_symbol.get(symU)
-        if e:
-            return e.get("instrument_key"), "BSE_MIS"
-        else:
-            return None, "bse_symbol_not_found"
+    
+    sym = sym.strip().upper()
+    
+    # Look up by trading_symbol (case-insensitive)
+    instrument = trading_symbol_to_instrument.get(sym)
+    if instrument:
+        return instrument.get("instrument_key"), "found_by_trading_symbol"
     else:
-        return None, "unknown_exchange"
+        return None, f"trading_symbol_not_found"
 
 
 # --- UI ---

@@ -1,0 +1,212 @@
+{
+  "timestamp": "2025-11-23T01:32:30.794947",
+  "total_stocks_with_prices": 2207,
+  "total_sectors_with_expressions": 41,
+  "sectors_summary": {
+    "Other": {
+      "subsectors": 3,
+      "stocks": 79,
+      "expression_length": 1939
+    },
+    "Telecom": {
+      "subsectors": 4,
+      "stocks": 37,
+      "expression_length": 937
+    },
+    "Construction Materials": {
+      "subsectors": 6,
+      "stocks": 96,
+      "expression_length": 2491
+    },
+    "Aviation": {
+      "subsectors": 3,
+      "stocks": 9,
+      "expression_length": 229
+    },
+    "Textile": {
+      "subsectors": 6,
+      "stocks": 105,
+      "expression_length": 2713
+    },
+    "Photographic Product": {
+      "subsectors": 2,
+      "stocks": 4,
+      "expression_length": 103
+    },
+    "Diamond & Jewellery": {
+      "subsectors": 2,
+      "stocks": 30,
+      "expression_length": 760
+    },
+    "Crude Oil": {
+      "subsectors": 4,
+      "stocks": 31,
+      "expression_length": 764
+    },
+    "Banking": {
+      "subsectors": 3,
+      "stocks": 41,
+      "expression_length": 1050
+    },
+    "Chemicals": {
+      "subsectors": 7,
+      "stocks": 101,
+      "expression_length": 2563
+    },
+    "Ship Building": {
+      "subsectors": 2,
+      "stocks": 6,
+      "expression_length": 142
+    },
+    "Consumer Durables": {
+      "subsectors": 6,
+      "stocks": 62,
+      "expression_length": 1568
+    },
+    "Alcohol": {
+      "subsectors": 1,
+      "stocks": 22,
+      "expression_length": 544
+    },
+    "Plastic Products": {
+      "subsectors": 2,
+      "stocks": 30,
+      "expression_length": 787
+    },
+    "Automobile & Ancillaries": {
+      "subsectors": 17,
+      "stocks": 164,
+      "expression_length": 4176
+    },
+    "Capital Goods": {
+      "subsectors": 9,
+      "stocks": 147,
+      "expression_length": 3670
+    },
+    "Diversified": {
+      "subsectors": 2,
+      "stocks": 12,
+      "expression_length": 310
+    },
+    "Hospitality": {
+      "subsectors": 5,
+      "stocks": 65,
+      "expression_length": 1650
+    },
+    "Fast Moving Consumer Goods": {
+      "subsectors": 10,
+      "stocks": 145,
+      "expression_length": 3659
+    },
+    "Paper": {
+      "subsectors": 2,
+      "stocks": 28,
+      "expression_length": 717
+    },
+    "Finance": {
+      "subsectors": 10,
+      "stocks": 169,
+      "expression_length": 4290
+    },
+    "Retailing": {
+      "subsectors": 3,
+      "stocks": 43,
+      "expression_length": 1079
+    },
+    "Information Technology": {
+      "subsectors": 6,
+      "stocks": 99,
+      "expression_length": 2475
+    },
+    "Media & Entertainment": {
+      "subsectors": 3,
+      "stocks": 84,
+      "expression_length": 2155
+    },
+    "Healthcare": {
+      "subsectors": 3,
+      "stocks": 60,
+      "expression_length": 1509
+    },
+    "Power": {
+      "subsectors": 2,
+      "stocks": 30,
+      "expression_length": 756
+    },
+    "Logistics": {
+      "subsectors": 4,
+      "stocks": 52,
+      "expression_length": 1330
+    },
+    "Gas Transmission": {
+      "subsectors": 2,
+      "stocks": 8,
+      "expression_length": 184
+    },
+    "Iron & Steel": {
+      "subsectors": 4,
+      "stocks": 47,
+      "expression_length": 1194
+    },
+    "Industrials Gases & Fuels": {
+      "subsectors": 2,
+      "stocks": 15,
+      "expression_length": 370
+    },
+    "Agriculture": {
+      "subsectors": 8,
+      "stocks": 126,
+      "expression_length": 3227
+    },
+    "Miscellaneous": {
+      "subsectors": 2,
+      "stocks": 19,
+      "expression_length": 496
+    },
+    "Infrastructure": {
+      "subsectors": 2,
+      "stocks": 32,
+      "expression_length": 758
+    },
+    "Trading": {
+      "subsectors": 2,
+      "stocks": 29,
+      "expression_length": 699
+    },
+    "Ratings": {
+      "subsectors": 2,
+      "stocks": 3,
+      "expression_length": 73
+    },
+    "Mining": {
+      "subsectors": 2,
+      "stocks": 15,
+      "expression_length": 377
+    },
+    "Non - Ferrous Metals": {
+      "subsectors": 3,
+      "stocks": 50,
+      "expression_length": 1251
+    },
+    "Realty": {
+      "subsectors": 1,
+      "stocks": 30,
+      "expression_length": 756
+    },
+    "Electricals": {
+      "subsectors": 3,
+      "stocks": 58,
+      "expression_length": 1448
+    },
+    "Abrasives": {
+      "subsectors": 2,
+      "stocks": 3,
+      "expression_length": 77
+    },
+    "Ferro Manganese": {
+      "subsectors": 2,
+      "stocks": 10,
+      "expression_length": 257
+    }
+  }
+}

@@ -2,6 +2,7 @@
 .env
 .env.local
 .env.*.local
+timescaledb-implimentation/tiger-cloud-db-36044-credentials.env
 
 # Virtual Environment
 .venv/

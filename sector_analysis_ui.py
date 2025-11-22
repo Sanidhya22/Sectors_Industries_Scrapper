@@ -1,18 +1,17 @@
-# sector_analysis_ui.py
 import traceback
+
 import collections
-import streamlit as st
-import pandas as pd
-import numpy as np
-from datetime import datetime, timedelta
-import yfinance as yf
-import requests
 import json
-import plotly.express as px
-import plotly.graph_objects as go
+import numpy as np
+import pandas as pd
+import requests
+import streamlit as st
+import yfinance as yf
+from datetime import datetime, timedelta
 from typing import Optional, Tuple
-import collections
-import traceback
+
+from upstox_fetch import fetch_data_from_upstox
+from chart_ui import render_sector_index_chart
 
 # --- Files (assumes same folder) ---
 # Unified file: sector -> subindustries -> stocks (with codes)
@@ -60,55 +59,6 @@ for instrument in instruments_data:
     if trading_symbol and segment in ("NSE_EQ", "BSE_EQ"):
         trading_symbol_to_instrument[trading_symbol] = instrument
 
-# --- Upstox fetch (copied/adapted from chartui.py) ---
-
-
-def fetch_data_from_upstox(
-    instrument_key: str, interval: str, from_date: str, to_date: str
-) -> pd.DataFrame:
-    """
-    Fetches historical candles from Upstox.
-    You MUST replace 'YOUR_ACCESS_TOKEN' below with a valid token to use Upstox.
-    Returns dataframe with Date index and 'Close' column (and Open/High/Low/Volume if available).
-    """
-    access_token = "YOUR_ACCESS_TOKEN"  # <-- replace with real token if you want Upstox
-    api_version = "v2"
-    # Upstox path format used in chartui.py: /{api_version}/historical-candle/{instrument_key}/{interval}/{to_date}/{from_date}
-    url_path = f"https://api.upstox.com/{api_version}/historical-candle/{instrument_key}/{interval}/{to_date}/{from_date}"
-    headers = {"Accept": "application/json"}  # Add Authorization if needed.
-    try:
-        r = requests.get(url_path, headers=headers, timeout=30)
-        r.raise_for_status()
-        data = r.json()
-        # For chartui style response: data['data']['candles'] list of [timestamp, open, high, low, close, volume, oi]
-        if data.get("status") == "success":
-            candles = data.get("data", {}).get("candles", [])
-            if not candles:
-                return pd.DataFrame()
-            df = pd.DataFrame(
-                candles,
-                columns=[
-                    "Timestamp",
-                    "Open",
-                    "High",
-                    "Low",
-                    "Close",
-                    "Volume",
-                    "OpenInterest",
-                ],
-            )
-            df["Date"] = pd.to_datetime(df["Timestamp"])
-            df.set_index("Date", inplace=True)
-            for c in ["Open", "High", "Low", "Close", "Volume"]:
-                if c in df.columns:
-                    df[c] = pd.to_numeric(df[c], errors="coerce")
-            return df.sort_index()
-        else:
-            # non-success
-            return pd.DataFrame()
-    except Exception:
-        return pd.DataFrame()
-
 
 # Yahoo fallback
 
@@ -119,8 +69,7 @@ def fetch_data_from_yahoo(ticker: str, start_date: str, end_date: str) -> pd.Dat
     if df.empty:
         return pd.DataFrame()
     df.index = pd.to_datetime(df.index)
-    df = df.rename(columns={"Adj Close": "Close"}
-                   ) if "Adj Close" in df.columns else df
+    df = df.rename(columns={"Adj Close": "Close"}) if "Adj Close" in df.columns else df
     # ensure Close column available
     if "Close" not in df.columns:
         return pd.DataFrame()
@@ -148,9 +97,9 @@ def get_instrument_key_for_stock(
         exch, sym = code.split(":", 1)
     except Exception:
         return None, "bad_code_format"
-    
+
     sym = sym.strip().upper()
-    
+
     # Look up by trading_symbol (case-insensitive)
     instrument = trading_symbol_to_instrument.get(sym)
     if instrument:
@@ -201,13 +150,11 @@ with col1:
     end_default = datetime.now().date()
     start_date = st.date_input("Start date", value=start_default)
     end_date = st.date_input("End date", value=end_default)
-    interval = st.selectbox("Interval (for Upstox)", [
-                            "1d", "5m", "15m", "1h"], index=0)
+    interval = st.selectbox("Interval (for Upstox)", ["1d", "5m", "15m", "1h"], index=0)
     use_upstox = st.checkbox(
         "Use Upstox (requires token configured in file)", value=False
     )
-    show_components = st.checkbox(
-        "Show component stock normalized series", value=False)
+    show_components = st.checkbox("Show component stock normalized series", value=False)
 with col2:
     st.info(
         "Notes: Upstox option uses instrument_key from complete.json. If Upstox not available, Yahoo Finance fallback is used where possible."
@@ -234,8 +181,7 @@ if st.button("Build sector index"):
                     )
                     # prefer 'Close' column
                     if not df.empty and "Close" in df.columns:
-                        s = df["Close"].resample(
-                            "1D").last().dropna()  # daily close
+                        s = df["Close"].resample("1D").last().dropna()  # daily close
                         dfs[name] = s
                     else:
                         missing[name] = f"upstox_no_data_{info}"
@@ -273,8 +219,7 @@ if st.button("Build sector index"):
             )
             st.subheader("Missing / unmatched stocks")
             st.dataframe(
-                pd.DataFrame.from_dict(
-                    missing, orient="index", columns=["reason"])
+                pd.DataFrame.from_dict(missing, orient="index", columns=["reason"])
                 .reset_index()
                 .rename(columns={"index": "stock"})
             )
@@ -336,8 +281,7 @@ if st.button("Build sector index"):
                     )
                     for k, v in list(clean_dfs.items())[:10]
                 }
-                st.write(
-                    "Sample included (name -> (n_points, start, end))", sample)
+                st.write("Sample included (name -> (n_points, start, end))", sample)
             if bad_entries:
                 st.subheader("Excluded stocks (reasons)")
                 st.dataframe(
@@ -363,44 +307,23 @@ if st.button("Build sector index"):
                 returns = price_df.pct_change().fillna(0)
                 avg_return = returns.mean(axis=1)
                 sector_index = (1 + avg_return).cumprod() * 100.0
-                sector_index = sector_index.rename(
-                    "Sector Index (equal-weight)")
+                sector_index = sector_index.rename("Sector Index (equal-weight)")
 
-                # rest of plotting code unchanged...
-                fig = go.Figure()
-                fig.add_trace(
-                    go.Scatter(
-                        x=sector_index.index,
-                        y=sector_index.values,
-                        mode="lines",
-                        name="Sector Index (equal-weight)",
-                        line={"width": 2},
-                    )
+                # Render chart using lightweight charts
+                component_series = price_df if show_components else None
+                render_sector_index_chart(
+                    sector_index,
+                    sector_choice,
+                    component_series=component_series,
+                    show_components=show_components,
                 )
-                if show_components:
-                    normed = price_df.divide(price_df.iloc[0]).multiply(100)
-                    for col in normed.columns:
-                        fig.add_trace(
-                            go.Scatter(
-                                x=normed.index,
-                                y=normed[col],
-                                mode="lines",
-                                name=f" {col}",
-                                opacity=0.6,
-                                line={"dash": "dot"},
-                            )
-                        )
-                fig.update_layout(
-                    title=f"{sector_choice} — equal-weight sector index",
-                    xaxis_title="Date",
-                    yaxis_title="Index / Normalized price",
-                    height=600,
-                )
-                st.plotly_chart(fig, use_container_width=True)
 
                 st.subheader("Summary")
+                total_data = len(clean_dfs)
+                total_missing = len(missing) + len(bad_entries)
                 st.write(
-                    f"Stocks with usable data: {len(clean_dfs)}  |  Missing / unmatched: {len(missing) + len(bad_entries)}"
+                    f"Stocks with usable data: {total_data}  |  "
+                    f"Missing / unmatched: {total_missing}"
                 )
                 if missing or bad_entries:
                     combined = {**missing, **bad_entries}

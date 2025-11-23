@@ -21,6 +21,8 @@ Output:
 """
 
 import logging
+import os
+from datetime import datetime
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout
 import pandas as pd
 import json
@@ -32,7 +34,7 @@ START_URL = urljoin(BASE_URL, "/sectors")
 OUTPUT_JSON = "output_complete_data.json"
 OUTPUT_XLSX = "output_complete_data.xlsx"
 SHOW_BROWSER = False  # Set to True to see browser window during scraping
-PAGE_ZOOM = 0.75  # Zoom factor to show more content
+PAGE_ZOOM = 0.50  # Zoom factor to show more content
 VIEWPORT_WIDTH = 2560
 VIEWPORT_HEIGHT = 8000
 
@@ -256,6 +258,8 @@ JS_CLICK_STOCK_BY_INDEX = """
 """
 
 # Set page zoom level
+
+
 def JS_SET_ZOOM(zoom_level):
     return f"() => {{ document.documentElement.style.zoom = '{zoom_level}'; }}"
 
@@ -264,12 +268,12 @@ def extract_stock_code_from_page(page, stock_name="Unknown"):
     """Extract stock exchange code from current stock detail page."""
     try:
         code_str = page.evaluate(JS_EXTRACT_CODE)
-        
+
         # Debug logging when code extraction fails
         if not code_str:
             logger.debug(f"Debug info for {stock_name}:")
             logger.debug(f"  Current URL: {page.url}")
-            
+
             # Check if page loaded correctly
             try:
                 ion_texts = page.evaluate(
@@ -281,12 +285,14 @@ def extract_stock_code_from_page(page, stock_name="Unknown"):
                         }));
                     }"""
                 )
-                logger.debug(f"  Found {len(ion_texts)} ion-text elements (showing first 10):")
+                logger.debug(
+                    f"  Found {len(ion_texts)} ion-text elements (showing first 10):")
                 for i, item in enumerate(ion_texts, 1):
-                    logger.debug(f"    {i}. '{item['text']}' (visible: {item['visible']})")
+                    logger.debug(
+                        f"    {i}. '{item['text']}' (visible: {item['visible']})")
             except Exception as debug_e:
                 logger.debug(f"  Could not extract debug info: {debug_e}")
-        
+
         return code_str
     except Exception as e:
         logger.error(f"Error extracting stock code for {stock_name}: {e}")
@@ -297,11 +303,11 @@ def scrape_stocks_with_codes(subpage, subsector_url, sub_name):
     """
     Navigate to subsector page, extract stocks, visit each stock page
     to get codes, and use back navigation.
-    
+
     Returns: List of stocks with codes
     """
     stocks_with_codes = []
-    
+
     try:
         logger.info(f"   Opening subsector: {sub_name}")
         subpage.goto(
@@ -309,7 +315,10 @@ def scrape_stocks_with_codes(subpage, subsector_url, sub_name):
             wait_until="networkidle",
             timeout=20000
         )
-        subpage.wait_for_timeout(800)
+
+        # Set zoom after navigation to ensure it applies correctly
+        subpage.evaluate(JS_SET_ZOOM(PAGE_ZOOM))
+        subpage.wait_for_timeout(1500)
 
         # Extract stock list with indices
         stock_list = subpage.evaluate(JS_EXTRACT_STOCK_LIST)
@@ -317,52 +326,81 @@ def scrape_stocks_with_codes(subpage, subsector_url, sub_name):
         total_stocks = len(stock_list)
         logger.info(f"      Found {total_stocks} stocks in {sub_name}")
 
+        # Take screenshot for debugging when zero stocks are found
+        if total_stocks == 0:
+            try:
+                # Create debug_screenshots directory if it doesn't exist
+                screenshot_dir = "debug_screenshots"
+                os.makedirs(screenshot_dir, exist_ok=True)
+
+                # Create filename with timestamp and sector/subsector info
+                timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+                safe_sub_name = sub_name.replace(' ', '_').replace(
+                    '/', '_').replace('\\', '_')[:50]
+                screenshot_filename = f"zero_stocks_{safe_sub_name}_{timestamp}.png"
+                screenshot_path = os.path.join(
+                    screenshot_dir, screenshot_filename)
+
+                # Capture screenshot
+                subpage.screenshot(path=screenshot_path, full_page=True)
+                logger.warning(
+                    f"      ⚠️  ZERO STOCKS FOUND - Screenshot saved: {screenshot_path}")
+                logger.warning(f"      URL: {subpage.url}")
+            except Exception as screenshot_error:
+                logger.error(
+                    f"      Failed to capture screenshot: {screenshot_error}")
+
         # Process each stock
         for idx, stock_info in enumerate(stock_list, 1):
             stock_name = stock_info['name']
             stock_index = stock_info['index']
-            
+
             try:
-                logger.info(f"      [{idx}/{total_stocks}] Clicking: {stock_name}")
-                
+                logger.info(
+                    f"      [{idx}/{total_stocks}] Clicking: {stock_name}")
+
                 # Click the stock item using its index
                 subpage.evaluate(JS_CLICK_STOCK_BY_INDEX, stock_index)
-                
+
                 # Wait for navigation to stock detail page
                 subpage.wait_for_load_state("domcontentloaded", timeout=15000)
                 subpage.wait_for_timeout(2500)
-                
+
                 # Extract stock code
                 stock_code = extract_stock_code_from_page(subpage, stock_name)
-                
+
                 stocks_with_codes.append({
                     "name": stock_name,
                     "code": stock_code
                 })
-                
+
                 if stock_code:
                     logger.info(f"         -> Code: {stock_code}")
                 else:
-                    logger.warning(f"         -> Could not extract code for {stock_name}")
+                    logger.warning(
+                        f"         -> Could not extract code for {stock_name}")
                     logger.warning(f"            URL: {subpage.url}")
-                    
+
                     # Take a screenshot for manual inspection (optional)
                     try:
                         screenshot_path = f"debug_no_code_{stock_name.replace(' ', '_').replace('.', '')[:30]}.png"
                         subpage.screenshot(path=screenshot_path)
-                        logger.warning(f"            Screenshot saved: {screenshot_path}")
+                        logger.warning(
+                            f"            Screenshot saved: {screenshot_path}")
                     except:
                         pass
-                    
+
                     # Stop execution for debugging
-                    logger.error("STOPPING: Code extraction failed. Check debug info above.")
-                    raise Exception(f"Code extraction failed for {stock_name}. Check logs and screenshot for details.")
-                
+                    logger.error(
+                        "STOPPING: Code extraction failed. Check debug info above.")
+                    raise Exception(
+                        f"Code extraction failed for {stock_name}. Check logs and screenshot for details.")
+
                 # Go back to stock list
                 logger.debug(f"         Going back to list...")
                 subpage.go_back(wait_until="domcontentloaded", timeout=15000)
                 subpage.wait_for_timeout(800)
-                
+
             except PlaywrightTimeout as e:
                 logger.error(f"      Timeout processing {stock_name}: {e}")
                 stocks_with_codes.append({
@@ -373,10 +411,12 @@ def scrape_stocks_with_codes(subpage, subsector_url, sub_name):
                 try:
                     subpage.go_back(timeout=5000)
                 except:
-                    logger.warning("      Could not go back, reloading subsector...")
-                    subpage.goto(subsector_url, wait_until="domcontentloaded", timeout=15000)
+                    logger.warning(
+                        "      Could not go back, reloading subsector...")
+                    subpage.goto(
+                        subsector_url, wait_until="domcontentloaded", timeout=15000)
                     subpage.wait_for_timeout(800)
-                    
+
             except Exception as e:
                 logger.error(f"      Error processing {stock_name}: {e}")
                 stocks_with_codes.append({
@@ -411,8 +451,10 @@ def run():
                 f"viewport {VIEWPORT_WIDTH}x{VIEWPORT_HEIGHT} "
                 f"and zoom {PAGE_ZOOM}"
             )
-            page.goto(START_URL, wait_until="networkidle")
-            page.wait_for_timeout(1000)
+            # Use domcontentloaded instead of networkidle for more reliable loading
+            page.goto(START_URL, wait_until="domcontentloaded", timeout=60000)
+            # Wait a bit longer for dynamic content
+            page.wait_for_timeout(2000)
 
             # Apply zoom
             page.evaluate(JS_SET_ZOOM(PAGE_ZOOM))
@@ -454,39 +496,47 @@ def run():
 
                     # Create separate page for subsector navigation
                     subpage = context.new_page()
-                    subpage.evaluate(JS_SET_ZOOM(PAGE_ZOOM))
 
                     for sub_idx, sub in enumerate(subSectors, 1):
                         sub_name = sub.get('name', 'Unknown')
                         sub_href = sub.get('href')
-                        
-                        logger.info(f"\n   [{sub_idx}/{len(subSectors)}] Subsector: {sub_name}")
+
+                        # Skip first subsector (index 0) as it's typically "Entire [Sector]"
+                        # which contains all stocks and creates duplicates
+                        if sub_idx == 1:
+                            logger.info(
+                                f"\n   [{sub_idx}/{len(subSectors)}] Skipping: {sub_name} (Entire sector - would create duplicates)")
+                            continue
+
+                        logger.info(
+                            f"\n   [{sub_idx}/{len(subSectors)}] Subsector: {sub_name}")
 
                         if not sub_href:
-                            logger.warning(f"   No href for {sub_name}, skipping")
+                            logger.warning(
+                                f"   No href for {sub_name}, skipping")
                             continue
 
                         full_url = urljoin(BASE_URL, sub_href)
-                        
+
                         # Scrape stocks with codes using click and back navigation
                         stocks_with_codes = scrape_stocks_with_codes(
-                            subpage, 
-                            full_url, 
+                            subpage,
+                            full_url,
                             sub_name
                         )
 
+                        # Removed 'href' from output to clean up JSON response
                         sector_record["subindustries"].append({
                             "name": sub_name,
-                            "href": sub_href,
                             "stocks": stocks_with_codes
                         })
 
                     subpage.close()
                     results.append(sector_record)
-                    
+
                     # Log progress summary
                     total_stocks = sum(
-                        len(sub["stocks"]) 
+                        len(sub["stocks"])
                         for sub in sector_record["subindustries"]
                     )
                     successful_codes = sum(
@@ -539,7 +589,7 @@ def run():
         df = pd.DataFrame(rows)
         df.to_excel(OUTPUT_XLSX, index=False)
         logger.info(f"[OK] Saved Excel output to {OUTPUT_XLSX}")
-        
+
         # Final statistics
         total_stocks = len(rows)
         successful_codes = sum(1 for row in rows if row["stock_code"])
@@ -547,9 +597,11 @@ def run():
         logger.info("SCRAPING COMPLETED SUCCESSFULLY!")
         logger.info(f"{'='*60}")
         logger.info(f"Total sectors: {len(results)}")
-        logger.info(f"Total subsectors: {sum(len(s['subindustries']) for s in results)}")
+        logger.info(
+            f"Total subsectors: {sum(len(s['subindustries']) for s in results)}")
         logger.info(f"Total stocks: {total_stocks}")
-        logger.info(f"Stock codes extracted: {successful_codes} ({successful_codes/total_stocks*100:.1f}%)")
+        logger.info(
+            f"Stock codes extracted: {successful_codes} ({successful_codes/total_stocks*100:.1f}%)")
         logger.info(f"{'='*60}")
 
     except Exception as e:

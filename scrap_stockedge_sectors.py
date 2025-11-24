@@ -9,14 +9,13 @@ Features:
     - Scrapes sectors → subsectors → stocks → exchange codes
     - Uses back navigation to efficiently traverse stock lists
     - Handles Shadow DOM and dynamic content
-    - Exports complete data with codes in JSON and Excel formats
+    - Exports complete data with codes in JSON format
 
 Usage:
-    python scrape_complete_data.py
+    python scrap_stockedge_sectors.py
 
 Output:
     - output_complete_data.json: Full hierarchical data with stock codes
-    - output_complete_data.xlsx: Flattened data in Excel format
     - scraper_complete.log: Detailed operation logs
 """
 
@@ -24,15 +23,13 @@ import logging
 import os
 from datetime import datetime
 from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout
-import pandas as pd
 import json
 from urllib.parse import urljoin
 
 # Configuration
 BASE_URL = "https://web.stockedge.com"
 START_URL = urljoin(BASE_URL, "/sectors")
-OUTPUT_JSON = "output_complete_data.json"
-OUTPUT_XLSX = "output_complete_data.xlsx"
+OUTPUT_JSON = "sector_data.json"
 SHOW_BROWSER = False  # Set to True to see browser window during scraping
 PAGE_ZOOM = 0.50  # Zoom factor to show more content
 VIEWPORT_WIDTH = 2560
@@ -570,29 +567,18 @@ def run():
             json.dump(results, f, indent=2, ensure_ascii=False)
         logger.info(f"[OK] Saved JSON output")
 
-        # Create Excel output with stock codes
-        rows = []
-        for sec in results:
-            s_title = sec.get("sector_title")
-            for sub in sec.get("subindustries", []):
-                sub_name = sub.get("name")
-                sub_href = sub.get("href")
-                for stock in sub.get("stocks", []):
-                    rows.append({
-                        "sector": s_title,
-                        "subindustry": sub_name,
-                        "sub_href": sub_href,
-                        "stock_name": stock.get("name"),
-                        "stock_code": stock.get("code")
-                    })
-
-        df = pd.DataFrame(rows)
-        df.to_excel(OUTPUT_XLSX, index=False)
-        logger.info(f"[OK] Saved Excel output to {OUTPUT_XLSX}")
-
         # Final statistics
-        total_stocks = len(rows)
-        successful_codes = sum(1 for row in rows if row["stock_code"])
+        total_stocks = sum(
+            len(stock) for sec in results
+            for sub in sec.get("subindustries", [])
+            for stock in [sub.get("stocks", [])]
+        )
+        successful_codes = sum(
+            1 for sec in results
+            for sub in sec.get("subindustries", [])
+            for stock in sub.get("stocks", [])
+            if stock.get("code")
+        )
         logger.info(f"\n{'='*60}")
         logger.info("SCRAPING COMPLETED SUCCESSFULLY!")
         logger.info(f"{'='*60}")

@@ -15,7 +15,7 @@ Usage:
     python scrap_stockedge_sectors.py
 
 Output:
-    - output_complete_data.json: Full hierarchical data with stock codes
+    - sector_data.json: Full hierarchical data with stock codes
     - scraper_complete.log: Detailed operation logs
 """
 
@@ -296,7 +296,7 @@ def extract_stock_code_from_page(page, stock_name="Unknown"):
         return None
 
 
-def scrape_stocks_with_codes(subpage, subsector_url, sub_name):
+def scrape_stocks_with_codes(subpage, subsector_url, sub_name, instrument_map=None):
     """
     Navigate to subsector page, extract stocks, visit each stock page
     to get codes, and use back navigation.
@@ -366,9 +366,19 @@ def scrape_stocks_with_codes(subpage, subsector_url, sub_name):
                 # Extract stock code
                 stock_code = extract_stock_code_from_page(subpage, stock_name)
 
+                # Look up instrument key if map is provided
+                instrument_key = None
+                if instrument_map and stock_code and ":" in stock_code:
+                    parts = stock_code.split(":")
+                    if len(parts) >= 2:
+                        exchange = parts[0].upper()
+                        symbol = parts[1].upper()
+                        instrument_key = instrument_map.get((exchange, symbol))
+
                 stocks_with_codes.append({
                     "name": stock_name,
-                    "code": stock_code
+                    "code": stock_code,
+                    "instrument_key": instrument_key
                 })
 
                 if stock_code:
@@ -402,7 +412,8 @@ def scrape_stocks_with_codes(subpage, subsector_url, sub_name):
                 logger.error(f"      Timeout processing {stock_name}: {e}")
                 stocks_with_codes.append({
                     "name": stock_name,
-                    "code": None
+                    "code": None,
+                    "instrument_key": None
                 })
                 # Try to recover by going back or reloading subsector
                 try:
@@ -418,7 +429,8 @@ def scrape_stocks_with_codes(subpage, subsector_url, sub_name):
                 logger.error(f"      Error processing {stock_name}: {e}")
                 stocks_with_codes.append({
                     "name": stock_name,
-                    "code": None
+                    "code": None,
+                    "instrument_key": None
                 })
 
     except Exception as e:
@@ -427,9 +439,43 @@ def scrape_stocks_with_codes(subpage, subsector_url, sub_name):
     return stocks_with_codes
 
 
+def load_instrument_keys(file_path):
+    """Load Upstox instruments and return a mapping of (exchange, symbol) -> instrument_key."""
+    logger.info(f"Loading Upstox instruments from {file_path}...")
+    try:
+        if not os.path.exists(file_path):
+            logger.warning(f"Upstox instrument file not found: {file_path}")
+            return {}
+
+        with open(file_path, 'r', encoding='utf-8') as f:
+            data = json.load(f)
+
+        mapping = {}
+        for item in data:
+            if 'exchange' not in item or 'trading_symbol' not in item or 'instrument_key' not in item:
+                continue
+
+            # Normalize to uppercase for consistent matching
+            exchange = item['exchange'].upper()
+            symbol = item['trading_symbol'].upper()
+            instr_key = item['instrument_key']
+
+            mapping[(exchange, symbol)] = instr_key
+
+        logger.info(f"Loaded {len(mapping)} instrument keys.")
+        return mapping
+    except Exception as e:
+        logger.error(f"Error loading instrument keys: {e}")
+        return {}
+
+
 def run():
     """Main scraper function that extracts complete data hierarchy."""
     results = []
+
+    # Load Upstox instrument keys first
+    upstox_file = os.path.join("upstox-instruments", "complete.json")
+    instrument_map = load_instrument_keys(upstox_file)
 
     with sync_playwright() as p:
         try:
@@ -519,10 +565,10 @@ def run():
                         stocks_with_codes = scrape_stocks_with_codes(
                             subpage,
                             full_url,
-                            sub_name
+                            sub_name,
+                            instrument_map
                         )
 
-                        # Removed 'href' from output to clean up JSON response
                         sector_record["subindustries"].append({
                             "name": sub_name,
                             "stocks": stocks_with_codes

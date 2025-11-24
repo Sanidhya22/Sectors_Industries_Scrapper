@@ -50,9 +50,9 @@ htmlcov/
 *.log
 logs/
 
-# Output files (generated)
+# # Output files (generated)
 output_*.json
-output_*.xlsx
+sector_data.json
 
 # Temporary/cache files
 .streamlit/

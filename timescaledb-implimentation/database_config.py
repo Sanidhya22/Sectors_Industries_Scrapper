@@ -1,9 +1,11 @@
 import os
 import psycopg2
 from dotenv import load_dotenv
-
 # Load the specific env file provided by the user
-load_dotenv('tiger-cloud-db-36044-credentials.env')
+import os
+current_dir = os.path.dirname(os.path.abspath(__file__))
+env_path = os.path.join(current_dir, 'tiger-cloud-db-36044-credentials.env')
+load_dotenv(env_path)
 
 
 def get_db_connection():

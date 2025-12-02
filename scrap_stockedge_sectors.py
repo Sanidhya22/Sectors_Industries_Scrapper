@@ -348,9 +348,35 @@ def scrape_stocks_with_codes(subpage, subsector_url, sub_name, instrument_map=No
                     f"      Failed to capture screenshot: {screenshot_error}")
 
         # Process each stock
-        for idx, stock_info in enumerate(stock_list, 1):
+        processed_count = 0  # Track how many stocks we've successfully processed
+        while processed_count < total_stocks:
+            # Re-extract stock list on each iteration to handle recovery scenarios
+            current_stock_list = subpage.evaluate(JS_EXTRACT_STOCK_LIST)
+
+            # If list is empty or different, we've lost sync - reload page
+            if len(current_stock_list) != total_stocks:
+                logger.warning(
+                    f"      Stock list changed ({len(current_stock_list)} vs {total_stocks}), reloading page...")
+                subpage.goto(
+                    subsector_url, wait_until="networkidle", timeout=20000)
+                subpage.evaluate(JS_SET_ZOOM(PAGE_ZOOM))
+                subpage.wait_for_timeout(1500)
+                current_stock_list = subpage.evaluate(JS_EXTRACT_STOCK_LIST)
+
+            if processed_count >= len(current_stock_list):
+                logger.error(
+                    f"      Processed count ({processed_count}) >= list length ({len(current_stock_list)}), stopping")
+                break
+
+            stock_info = current_stock_list[processed_count]
             stock_name = stock_info['name']
             stock_index = stock_info['index']
+            idx = processed_count + 1
+
+            # Initialize variables for this iteration
+            stock_code = None
+            instrument_key = None
+            success = False
 
             try:
                 logger.info(
@@ -367,7 +393,6 @@ def scrape_stocks_with_codes(subpage, subsector_url, sub_name, instrument_map=No
                 stock_code = extract_stock_code_from_page(subpage, stock_name)
 
                 # Look up instrument key if map is provided
-                instrument_key = None
                 if instrument_map and stock_code and ":" in stock_code:
                     parts = stock_code.split(":")
                     if len(parts) >= 2:
@@ -375,20 +400,20 @@ def scrape_stocks_with_codes(subpage, subsector_url, sub_name, instrument_map=No
                         symbol = parts[1].upper()
                         instrument_key = instrument_map.get((exchange, symbol))
 
-                stocks_with_codes.append({
-                    "name": stock_name,
-                    "code": stock_code,
-                    "instrument_key": instrument_key
-                })
-
                 if stock_code:
                     logger.info(f"         -> Code: {stock_code}")
+                    if instrument_key:
+                        logger.debug(
+                            f"         -> Instrument Key: {instrument_key}")
+                    else:
+                        logger.warning(
+                            f"         -> No instrument key found for {stock_code}")
                 else:
                     logger.warning(
                         f"         -> Could not extract code for {stock_name}")
                     logger.warning(f"            URL: {subpage.url}")
 
-                    # Take a screenshot for manual inspection (optional)
+                    # Take a screenshot for manual inspection
                     try:
                         screenshot_path = f"debug_no_code_{stock_name.replace(' ', '_').replace('.', '')[:30]}.png"
                         subpage.screenshot(path=screenshot_path)
@@ -397,41 +422,61 @@ def scrape_stocks_with_codes(subpage, subsector_url, sub_name, instrument_map=No
                     except:
                         pass
 
-                    # Stop execution for debugging
-                    logger.error(
-                        "STOPPING: Code extraction failed. Check debug info above.")
-                    raise Exception(
-                        f"Code extraction failed for {stock_name}. Check logs and screenshot for details.")
-
                 # Go back to stock list
                 logger.debug(f"         Going back to list...")
                 subpage.go_back(wait_until="domcontentloaded", timeout=15000)
                 subpage.wait_for_timeout(800)
+                success = True
 
             except PlaywrightTimeout as e:
                 logger.error(f"      Timeout processing {stock_name}: {e}")
-                stocks_with_codes.append({
-                    "name": stock_name,
-                    "code": None,
-                    "instrument_key": None
-                })
-                # Try to recover by going back or reloading subsector
+                # Recovery: reload the entire subsector page
+                logger.warning("      Reloading subsector page to recover...")
                 try:
-                    subpage.go_back(timeout=5000)
-                except:
-                    logger.warning(
-                        "      Could not go back, reloading subsector...")
                     subpage.goto(
-                        subsector_url, wait_until="domcontentloaded", timeout=15000)
-                    subpage.wait_for_timeout(800)
+                        subsector_url, wait_until="networkidle", timeout=20000)
+                    subpage.evaluate(JS_SET_ZOOM(PAGE_ZOOM))
+                    subpage.wait_for_timeout(1500)
+                    success = True  # We recovered, mark as success to move on
+                except Exception as recovery_error:
+                    logger.error(f"      Recovery failed: {recovery_error}")
+                    break  # Can't recover, exit the loop
 
             except Exception as e:
                 logger.error(f"      Error processing {stock_name}: {e}")
-                stocks_with_codes.append({
-                    "name": stock_name,
-                    "code": None,
-                    "instrument_key": None
-                })
+                # Recovery: reload the entire subsector page
+                logger.warning("      Reloading subsector page to recover...")
+                try:
+                    subpage.goto(
+                        subsector_url, wait_until="networkidle", timeout=20000)
+                    subpage.evaluate(JS_SET_ZOOM(PAGE_ZOOM))
+                    subpage.wait_for_timeout(1500)
+                    success = True  # We recovered, mark as success to move on
+                except Exception as recovery_error:
+                    logger.error(f"      Recovery failed: {recovery_error}")
+                    break  # Can't recover, exit the loop
+
+            finally:
+                # Only append stock data if it has a valid instrument_key
+                if instrument_key:
+                    stocks_with_codes.append({
+                        "name": stock_name,
+                        "code": stock_code,
+                        "instrument_key": instrument_key
+                    })
+                    logger.debug(f"         Added {stock_name} to results")
+                else:
+                    logger.warning(
+                        f"         Skipping {stock_name}: No instrument key found")
+
+                # Only increment if we successfully processed (or recovered)
+                if success:
+                    processed_count += 1
+                else:
+                    # If we couldn't process or recover, stop
+                    logger.error(
+                        f"      Failed to process {stock_name}, stopping subsector processing")
+                    break
 
     except Exception as e:
         logger.error(f"   Error in subsector {sub_name}: {e}")
